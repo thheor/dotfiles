@@ -1,39 +1,51 @@
 return {
-  -- 1. Disable native TypeScript LSP servers so they don't clash with CoC
+  -- 1. Disable native LSP servers (TypeScript & Astro) so they don't clash with CoC
   {
     "neovim/nvim-lspconfig",
     opts = {
       servers = {
-        -- Disable standard TypeScript servers in the native LSP
+        -- Native TypeScript servers
         vtsls = { enabled = false },
         tsserver = { enabled = false },
         typescript = { enabled = false },
         tsgo = { enabled = false },
+        -- Native Astro server
+        astro = { enabled = false },
       },
     },
   },
 
-  -- 2. Disable blink.cmp (LazyVim's default completion engine) in TypeScript files
+  -- 2. Disable blink.cmp in JS, TS, and Astro files
   {
     "saghen/blink.cmp",
     optional = true,
     opts = {
       enabled = function()
-        local ft = vim.bo.filetype
-        return not (ft == "javascript" or ft == "typescript" or ft == "typescriptreact")
+        local disabled_fts = {
+          javascript = true,
+          typescript = true,
+          typescriptreact = true,
+          astro = true,
+        }
+        return not disabled_fts[vim.bo.filetype]
       end,
     },
   },
 
-  -- 3. Disable nvim-cmp (if you are using the cmp extra instead of blink) in TypeScript files
+  -- 3. Disable nvim-cmp in JS, TS, and Astro files
   {
     "hrsh7th/nvim-cmp",
     optional = true,
     opts = function(_, opts)
       local original_enabled = opts.enabled
+      local disabled_fts = {
+        javascript = true,
+        typescript = true,
+        typescriptreact = true,
+        astro = true,
+      }
       opts.enabled = function()
-        local ft = vim.bo.filetype
-        if ft == "typescript" or ft == "typescriptreact" then
+        if disabled_fts[vim.bo.filetype] then
           return false
         end
         if type(original_enabled) == "function" then
@@ -46,12 +58,22 @@ return {
     end,
   },
 
-  -- 4. Load coc.nvim for JS/TS buffers and apply buffer-local keymaps
+  -- 4. Load coc.nvim for JS/TS/Astro buffers and apply keymaps
   {
     "neoclide/coc.nvim",
     branch = "release",
-    ft = { "javascript", "typescript", "typescriptreact" }, -- Only load for these filetypes
+    ft = { "javascript", "typescript", "typescriptreact", "astro" },
+    init = function()
+      -- Automatically install necessary CoC extensions if not already present
+      vim.g.coc_global_extensions = vim.list_extend(vim.g.coc_global_extensions or {}, {
+        "@yaegassy/coc-astro",
+        "@yaegassy/coc-tailwindcss3",
+        "coc-tsserver",
+      })
+    end,
     config = function()
+      local target_fts = { "javascript", "typescript", "typescriptreact", "astro" }
+
       local function setup_buffer(bufnr)
         local opts = { silent = true, noremap = true, expr = true, buffer = bufnr }
         local keymap = vim.keymap.set
@@ -59,12 +81,7 @@ return {
         -- CoC completion keymaps
         keymap("i", "<TAB>", 'coc#pum#visible() ? coc#pum#next(1) : "<TAB>"', opts)
         keymap("i", "<S-TAB>", 'coc#pum#visible() ? coc#pum#prev(1) : "<C-h>"', opts)
-        keymap(
-          "i",
-          "<CR>",
-          [[coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<c-r>=coc#on_enter()\<CR>"]],
-          opts
-        )
+        keymap("i", "<CR>", [[coc#pum#visible() ? coc#pum#confirm() : "\<C-g>u\<CR>\<c-r>=coc#on_enter()\<CR>"]], opts)
 
         -- Navigation keymaps
         local normal_opts = { silent = true, buffer = bufnr }
@@ -73,7 +90,7 @@ return {
         keymap("n", "gi", "<Plug>(coc-implementation)", normal_opts)
         keymap("n", "gr", "<Plug>(coc-references)", normal_opts)
 
-        -- Use K to show documentation
+        -- Documentation hover
         _G.show_docs = function()
           local cw = vim.fn.expand("<cword>")
           if vim.fn.index({ "vim", "help" }, vim.bo.filetype) >= 0 then
@@ -87,17 +104,17 @@ return {
         keymap("n", "K", "<CMD>lua _G.show_docs()<CR>", normal_opts)
       end
 
+      -- Attach keymaps when entering an Astro/TS/JS buffer
       vim.api.nvim_create_autocmd("FileType", {
-        pattern = { "javascript", "typescript", "typescriptreact" },
+        pattern = target_fts,
         callback = function(args)
           setup_buffer(args.buf)
         end,
       })
 
-      -- CoC is lazy-loaded by filetype, which happens after this buffer's
-      -- FileType event. Configure the buffer that caused the plugin to load.
+      -- Attach to current buffer if already loaded on one of these filetypes
       local current_buf = vim.api.nvim_get_current_buf()
-      if vim.tbl_contains({ "javascript", "typescript", "typescriptreact" }, vim.bo[current_buf].filetype) then
+      if vim.tbl_contains(target_fts, vim.bo[current_buf].filetype) then
         setup_buffer(current_buf)
       end
     end,
