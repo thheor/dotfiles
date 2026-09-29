@@ -1,0 +1,13 @@
+---
+syntax: fish
+tags: [ compression ]
+---
+
+# Extract to a specific directory using a variable:
+set -l target_dir "/path/to/extract"
+tar -xf archive.tar -C $target_dir
+
+# Extract multiple archives in a loop:
+for file in *.tar.gz
+    tar -xzf $file
+end
